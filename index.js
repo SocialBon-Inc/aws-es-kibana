@@ -9,6 +9,9 @@ var stream = require('stream');
 var figlet = require('figlet');
 var basicAuth = require('basic-auth-connect');
 var compress = require('compression');
+var spawn = require('child_process').spawn;
+
+var lastTouchTimestamp = new Date().getTime();
 
 var yargs = require('yargs')
     .usage('usage: $0 [options] <aws-es-cluster-endpoint>')
@@ -34,22 +37,22 @@ var yargs = require('yargs')
         type: 'string'
     })
     .option('u', {
-      alias: 'user',
-      default: process.env.USER,
-      demand: false,
-      describe: 'the username to access the proxy'
+        alias: 'user',
+        default: process.env.USER,
+        demand: false,
+        describe: 'the username to access the proxy'
     })
     .option('a', {
-      alias: 'password',
-      default: process.env.PASSWORD,
-      demand: false,
-      describe: 'the password to access the proxy'
+        alias: 'password',
+        default: process.env.PASSWORD,
+        demand: false,
+        describe: 'the password to access the proxy'
     })
     .option('s', {
-      alias: 'silent',
-      default: false,
-      demand: false,
-      describe: 'remove figlet banner'
+        alias: 'silent',
+        default: false,
+        demand: false,
+        describe: 'remove figlet banner'
     })
     .help()
     .version()
@@ -71,7 +74,7 @@ if (!REGION) {
         REGION = m[1];
     } else {
         console.error('region cannot be parsed from endpoint address, either the endpoint must end ' +
-                      'in .<region>.es.amazonaws.com or --region should be provided as an argument');
+            'in .<region>.es.amazonaws.com or --region should be provided as an argument');
         yargs.showHelp();
         process.exit(1);
     }
@@ -107,7 +110,7 @@ var proxy = httpProxy.createProxyServer({
 var app = express();
 app.use(compress());
 if (argv.u && argv.a) {
-  app.use(basicAuth(argv.u, argv.a));
+    app.use(basicAuth(argv.u, argv.a));
 }
 app.use(bodyParser.raw({type: function() { return true; }}));
 app.use(getCredentials);
@@ -121,6 +124,9 @@ app.use(function (req, res) {
 });
 
 proxy.on('proxyReq', function (proxyReq, req) {
+    // Keep track of last request time so we automatically shut this guy down
+    lastTouchTimestamp = new Date().getTime()
+
     var endpoint = new AWS.Endpoint(ENDPOINT);
     var request = new AWS.HttpRequest(endpoint);
     request.method = proxyReq.method;
@@ -156,5 +162,20 @@ if(!argv.s) {
     }));
 }
 
-console.log('AWS ES cluster available at http://' + BIND_ADDRESS + ':' + PORT);
-console.log('Kibana available at http://' + BIND_ADDRESS + ':' + PORT + '/_plugin/kibana/');
+var browser;
+
+setTimeout(function () {
+    browser = spawn('open', ['/Applications/Google\ Chrome.app', 'http://127.0.0.1:9200/_plugin/kibana/'], {
+        detached: true
+    });
+}, 2000);
+
+setInterval(function () {
+    // Auto shutdown on idle
+    var currentTimestamp = new Date().getTime();
+
+    // If the last request was made more than 30 minutes ago, exit the process.
+    if (currentTimestamp - lastTouchTimestamp > 1000 * 60 * 30) {
+        process.exit();
+    }
+}, 1000);
