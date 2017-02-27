@@ -125,7 +125,7 @@ app.use(function (req, res) {
 
 proxy.on('proxyReq', function (proxyReq, req) {
     // Keep track of last request time so we automatically shut this guy down
-    lastTouchTimestamp = new Date().getTime()
+    lastTouchTimestamp = new Date().getTime();
 
     var endpoint = new AWS.Endpoint(ENDPOINT);
     var request = new AWS.HttpRequest(endpoint);
